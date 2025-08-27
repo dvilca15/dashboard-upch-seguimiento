@@ -4,6 +4,7 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 import io
+import os
 
 # ================================
 #  FUNCIONES AUXILIARES
@@ -771,6 +772,8 @@ def descargar_excel(n_clicks):
     output.seek(0)
     return dcc.send_bytes(output.getvalue(), "evolucion_becarios_profesional.xlsx")
 
-# ================================
+server = app.server  # Render necesita esta variable
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 8050))  # Render asigna el puerto
+    app.run(host="0.0.0.0", port=port, debug=False)

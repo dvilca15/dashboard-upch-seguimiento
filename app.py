@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import io
 import os
+import base64
 
 # ================================
 #  FUNCIONES AUXILIARES
@@ -49,21 +50,33 @@ def comparar_riesgo(row):
 # ================================
 #  LEER BASE BECARIOS
 # ================================
-file_id = "1OOiHkMC4XOXgFBwId1hjKMfBt7QuY2lj"  # ID de BECARIOS
-url = f"https://drive.google.com/uc?export=download&id={file_id}"
+try:
+    file_id = "1OOiHkMC4XOXgFBwId1hjKMfBt7QuY2lj"  # ID de BECARIOS
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
 
-df_becarios = pd.read_excel(url, sheet_name="BECARIOS")
-df_becarios = normalizar_columnas(df_becarios)
+    df_becarios = pd.read_excel(url, sheet_name="BECARIOS")
+    df_becarios = normalizar_columnas(df_becarios)
 
-# Normalizar columnas de riesgo
-col_riesgo1 = [c for c in df_becarios.columns if "2025-1" in c][0]
-col_riesgo2 = [c for c in df_becarios.columns if "2025-2" in c][0]
+    # Normalizar columnas de riesgo
+    col_riesgo1 = [c for c in df_becarios.columns if "2025-1" in c][0]
+    col_riesgo2 = [c for c in df_becarios.columns if "2025-2" in c][0]
 
-df_becarios["RIESGO_2025_1"] = df_becarios[col_riesgo1].apply(limpiar_riesgo)
-df_becarios["RIESGO_2025_2"] = df_becarios[col_riesgo2].apply(limpiar_riesgo)
+    df_becarios["RIESGO_2025_1"] = df_becarios[col_riesgo1].apply(limpiar_riesgo)
+    df_becarios["RIESGO_2025_2"] = df_becarios[col_riesgo2].apply(limpiar_riesgo)
 
-# Calcular evolución
-df_becarios["EVOLUCION"] = df_becarios.apply(comparar_riesgo, axis=1)
+    # Calcular evolución
+    df_becarios["EVOLUCION"] = df_becarios.apply(comparar_riesgo, axis=1)
+
+except Exception as e:
+    print(f"Error al cargar datos: {e}")
+    # Crear datos de ejemplo en caso de error
+    df_becarios = pd.DataFrame({
+        'APELLIDOS Y NOMBRES': ['Estudiante 1', 'Estudiante 2', 'Estudiante 3'],
+        'TIPO DE BENEFICIO': ['BECA', 'CREDITO', 'BECA'],
+        'RIESGO_2025_1': ['ALTO', 'MEDIO', 'BAJO'],
+        'RIESGO_2025_2': ['MEDIO', 'MEDIO', 'BAJO'],
+        'EVOLUCION': ['MEJORO', 'SE MANTUVO', 'SE MANTUVO']
+    })
 
 # ================================
 #  TABLAS RESUMEN
@@ -115,6 +128,7 @@ se_mantuvieron = df_becarios[
 #  DASHBOARD
 # ================================
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app.title = "Dashboard Becarios 2025"
 
 # Paleta de colores profesional
 COLORS = {
@@ -196,12 +210,12 @@ def grafico_riesgo():
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(family="Arial, sans-serif", size=12),
         height=450,
-        margin=dict(t=90, b=50, l=50, r=50),  # Aumentar margen superior
+        margin=dict(t=90, b=50, l=50, r=50),
         legend=dict(
             title="<b>Período</b>",
             orientation="h",
             yanchor="bottom",
-            y=1.05,  # Separar más la leyenda del título
+            y=1.05,
             xanchor="center",
             x=0.5
         )
@@ -211,6 +225,21 @@ def grafico_riesgo():
     return fig
 
 def grafico_no_encontrado():
+    if riesgo_no_encontrado.empty:
+        # Crear un gráfico vacío si no hay datos
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No hay datos de 'NO ENCONTRADO'",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(
+            title="📉 Evolución de NO ENCONTRADOS (2025-1 vs 2025-2)",
+            height=400
+        )
+        return fig
+    
     fig = px.bar(
         riesgo_no_encontrado,
         x="TOTAL",
@@ -232,7 +261,7 @@ def grafico_no_encontrado():
             'font': {'size': 18, 'color': COLORS['primary']}
         },
         xaxis_title="<b>Cantidad</b>",
-        yaxis_title="",  # Quitar título del eje Y
+        yaxis_title="",
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(family="Arial, sans-serif", size=12),
@@ -241,9 +270,9 @@ def grafico_no_encontrado():
         yaxis=dict(
             showticklabels=True, 
             categoryorder="total descending",
-            type='category'  # Forzar tipo categórico para evitar interpretación de fechas
+            type='category'
         ),
-        showlegend=False  # Quitar leyenda para limpiar el gráfico
+        showlegend=False
     )
     fig.update_xaxes(showgrid=True, gridcolor='rgba(128,128,128,0.1)')
     fig.update_yaxes(showgrid=False)
@@ -254,6 +283,20 @@ def grafico_no_encontrado():
 # ================================
 def grafico_empeoraron_por_beneficio():
     df_empeoraron = df_becarios[df_becarios["EVOLUCION"] == "EMPEORO"]
+
+    if df_empeoraron.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No hay estudiantes que hayan empeorado",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(
+            title="📊 Empeoraron por Tipo de Beneficio",
+            height=450
+        )
+        return fig
 
     empeoraron_por_beneficio = (
         df_empeoraron.groupby("TIPO DE BENEFICIO")
@@ -271,10 +314,9 @@ def grafico_empeoraron_por_beneficio():
         color_discrete_sequence=[COLORS['danger'], COLORS['warning'], COLORS['info'], COLORS['secondary'], COLORS['dark']]
     )
     
-    # Ajuste para posicionar mejor el texto en las barras
     fig.update_traces(
-        textposition="auto",  # Auto selecciona la mejor posición para cada barra
-        textfont=dict(size=14, weight='bold')  # Texto más visible, sin color fijo
+        textposition="auto",
+        textfont=dict(size=14, weight='bold')
     )
     
     fig.update_layout(
@@ -303,6 +345,10 @@ def grafico_empeoraron_por_beneficio():
 def tabla_beneficio_niveles_2025_2():
     df_2025_2 = df_becarios[df_becarios["RIESGO_2025_2"].isin(orden_niveles)]
 
+    if df_2025_2.empty:
+        return html.Div("No hay datos disponibles para mostrar", 
+                       style={'textAlign': 'center', 'color': 'gray', 'padding': '20px'})
+
     tabla = (
         df_2025_2.groupby(["TIPO DE BENEFICIO", "RIESGO_2025_2"])
         .size()
@@ -311,7 +357,7 @@ def tabla_beneficio_niveles_2025_2():
 
     tabla_pivot = tabla.pivot(index="TIPO DE BENEFICIO", columns="RIESGO_2025_2", values="CANTIDAD").fillna(0).reset_index()
 
-    columnas_orden = ["TIPO DE BENEFICIO", "ALTO", "MEDIO", "BAJO"]
+    columnas_orden = ["TIPO DE BENEFICIO"] + [col for col in ["ALTO", "MEDIO", "BAJO"] if col in tabla_pivot.columns]
     tabla_pivot = tabla_pivot.reindex(columns=columnas_orden, fill_value=0)
 
     return dash_table.DataTable(
@@ -493,10 +539,10 @@ app.layout = html.Div([
                     'padding': '20px',
                     'boxShadow': '0 8px 25px rgba(0,0,0,0.1)',
                     'margin': '10px',
-                    'height': '450px',  # Mismo alto que el gráfico
+                    'height': '450px',
                     'display': 'flex',
                     'flexDirection': 'column',
-                    'justifyContent': 'center'  # Centrar verticalmente el contenido
+                    'justifyContent': 'center'
                 })
             ], lg=4, md=12)
         ], className="mb-5"),
@@ -557,7 +603,7 @@ app.layout = html.Div([
 
         html.Hr(style={'border': f'1px solid {COLORS["primary"]}', 'margin': '40px 0'}),
 
-        # Sección de descarga
+        # Sección de descarga mejorada
         dbc.Row([
             dbc.Col([
                 html.Div([
@@ -583,6 +629,12 @@ app.layout = html.Div([
                             'boxShadow': '0 4px 15px rgba(0,0,0,0.2)'
                         })
                     ], className="text-center"),
+                    # Mensaje de estado
+                    html.Div(id="download-status", style={
+                        'textAlign': 'center', 
+                        'marginTop': '15px',
+                        'fontSize': '0.9rem'
+                    }),
                     dcc.Download(id="download_excel")
                 ], style={
                     'backgroundColor': 'white',
@@ -619,161 +671,138 @@ app.layout = html.Div([
 })
 
 # ================================
-#  CALLBACK PARA DESCARGA CON FORMATO SIMPLIFICADO
+#  CALLBACK CORREGIDO PARA DESCARGA
 # ================================
 @app.callback(
-    Output("download_excel", "data"),
+    [Output("download_excel", "data"),
+     Output("download-status", "children")],
     Input("btn_excel", "n_clicks"),
     prevent_initial_call=True
 )
 def descargar_excel(n_clicks):
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    if n_clicks == 0:
+        return None, ""
     
-    output = io.BytesIO()
-    
-    # Crear DataFrames para cada hoja
-    df_mejoraron = df_becarios[df_becarios["EVOLUCION"] == "MEJORO"]
-    df_empeoraron = df_becarios[df_becarios["EVOLUCION"] == "EMPEORO"]
-    df_se_mantuvieron = df_becarios[
-        (df_becarios["EVOLUCION"] == "SE MANTUVO") &
-        (df_becarios["RIESGO_2025_1"] != "NO ENCONTRADO") &
-        (df_becarios["RIESGO_2025_2"] != "NO ENCONTRADO")
-    ]
-    
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        # Escribir cada DataFrame
-        df_mejoraron.to_excel(writer, sheet_name="Mejoraron", index=False)
-        df_empeoraron.to_excel(writer, sheet_name="Empeoraron", index=False)
-        df_se_mantuvieron.to_excel(writer, sheet_name="Se Mantuvieron", index=False)
+    try:
+        # Crear DataFrames para cada categoría
+        df_mejoraron = df_becarios[df_becarios["EVOLUCION"] == "MEJORO"].copy()
+        df_empeoraron = df_becarios[df_becarios["EVOLUCION"] == "EMPEORO"].copy()
+        df_se_mantuvieron = df_becarios[
+            (df_becarios["EVOLUCION"] == "SE MANTUVO") &
+            (df_becarios["RIESGO_2025_1"] != "NO ENCONTRADO") &
+            (df_becarios["RIESGO_2025_2"] != "NO ENCONTRADO")
+        ].copy()
         
-        # Formatear cada hoja SIN TABLAS
-        hojas_info = [
-            ("Mejoraron", df_mejoraron, "28A745"),      # Verde
-            ("Empeoraron", df_empeoraron, "DC3545"),     # Rojo
-            ("Se Mantuvieron", df_se_mantuvieron, "6C757D")  # Gris
-        ]
+        # Crear buffer en memoria
+        output = io.BytesIO()
         
-        # Definir estilos
-        border_thin = Border(
-            left=Side(style='thin'), right=Side(style='thin'),
-            top=Side(style='thin'), bottom=Side(style='thin')
-        )
-        
-        for nombre_hoja, df, color_hex in hojas_info:
-            if not df.empty:
-                ws = writer.sheets[nombre_hoja]
+        # Usar openpyxl (más universal, viene con pandas por defecto)
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Escribir hojas principales
+            if not df_mejoraron.empty:
+                df_mejoraron.to_excel(writer, sheet_name="Mejoraron", index=False)
+            
+            if not df_empeoraron.empty:
+                df_empeoraron.to_excel(writer, sheet_name="Empeoraron", index=False)
+            
+            if not df_se_mantuvieron.empty:
+                df_se_mantuvieron.to_excel(writer, sheet_name="Se Mantuvieron", index=False)
+            
+            # Crear hoja de resumen
+            df_resumen = pd.DataFrame({
+                'CATEGORIA': ['MEJORARON', 'EMPEORARON', 'SE MANTUVIERON', 'TOTAL'],
+                'CANTIDAD': [
+                    len(df_mejoraron), 
+                    len(df_empeoraron), 
+                    len(df_se_mantuvieron), 
+                    len(df_becarios)
+                ],
+                'PORCENTAJE': [
+                    f"{len(df_mejoraron)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%",
+                    f"{len(df_empeoraron)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%", 
+                    f"{len(df_se_mantuvieron)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%",
+                    "100.0%"
+                ]
+            })
+            
+            df_resumen.to_excel(writer, sheet_name="Resumen", index=False)
+            
+            # Formateo básico con openpyxl
+            try:
+                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
                 
-                max_row = len(df) + 1
-                max_col = len(df.columns)
+                # Colores para cada hoja
+                colores_hojas = {
+                    "Mejoraron": "28A745",
+                    "Empeoraron": "DC3545", 
+                    "Se Mantuvieron": "6C757D",
+                    "Resumen": "2E86AB"
+                }
                 
-                # Estilos para encabezados
-                header_fill = PatternFill(start_color=color_hex, end_color=color_hex, fill_type="solid")
-                header_font = Font(bold=True, color="FFFFFF", size=12)
-                header_alignment = Alignment(horizontal="center", vertical="center")
-                
-                # Estilos para datos
-                data_alignment = Alignment(horizontal="center", vertical="center")
-                data_font = Font(size=10)
-                
-                # Aplicar formato a encabezados
-                for col in range(1, max_col + 1):
-                    cell = ws.cell(row=1, column=col)
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = header_alignment
-                    cell.border = border_thin
-                
-                # Aplicar formato a datos con filas alternadas
-                light_fill = PatternFill(start_color="F8F9FA", end_color="F8F9FA", fill_type="solid")
-                
-                for row in range(2, max_row + 1):
-                    for col in range(1, max_col + 1):
-                        cell = ws.cell(row=row, column=col)
-                        cell.font = data_font
-                        cell.border = border_thin
-                        
-                        # Alternar colores de filas
-                        if row % 2 == 0:
-                            cell.fill = light_fill
-                        
-                        # Centrar solo columnas numéricas/cortas
-                        col_name = df.columns[col-1]
-                        if col_name not in ["APELLIDOS Y NOMBRES", "DESCRIPCION"]:
-                            cell.alignment = data_alignment
-                
-                # Ajustar anchos de columnas
-                for col in ws.columns:
-                    max_length = 0
-                    column = col[0].column_letter
-                    for cell in col:
-                        if cell.value:
-                            max_length = max(max_length, len(str(cell.value)))
+                # Aplicar formato a cada hoja
+                for sheet_name in writer.sheets:
+                    worksheet = writer.sheets[sheet_name]
+                    color_hex = colores_hojas.get(sheet_name, "2E86AB")
                     
-                    # Establecer ancho óptimo
-                    adjusted_width = min(max(max_length + 2, 12), 50)
-                    ws.column_dimensions[column].width = adjusted_width
-                
-                # Ajustar altura de filas
-                ws.row_dimensions[1].height = 25  # Encabezado más alto
-                for row in range(2, max_row + 1):
-                    ws.row_dimensions[row].height = 20
+                    # Formatear encabezados
+                    header_fill = PatternFill(start_color=color_hex, end_color=color_hex, fill_type="solid")
+                    header_font = Font(bold=True, color="FFFFFF", size=12)
+                    header_alignment = Alignment(horizontal="center", vertical="center")
+                    
+                    # Aplicar formato a la primera fila (encabezados)
+                    for cell in worksheet[1]:
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = header_alignment
+                    
+                    # Ajustar anchos de columnas automáticamente
+                    for column in worksheet.columns:
+                        max_length = 0
+                        column_letter = column[0].column_letter
+                        
+                        for cell in column:
+                            try:
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(str(cell.value))
+                            except:
+                                pass
+                        
+                        adjusted_width = min(max_length + 2, 50)
+                        worksheet.column_dimensions[column_letter].width = max(adjusted_width, 12)
+                        
+            except ImportError:
+                # Si no se puede importar openpyxl.styles, continuar sin formato
+                pass
         
-        # Agregar hoja de resumen
-        df_resumen = pd.DataFrame({
-            'CATEGORIA': ['MEJORARON', 'EMPEORARON', 'SE MANTUVIERON', 'TOTAL'],
-            'CANTIDAD': [len(df_mejoraron), len(df_empeoraron), len(df_se_mantuvieron), len(df_becarios)],
-            'PORCENTAJE': [
-                f"{len(df_mejoraron)/len(df_becarios)*100:.1f}%",
-                f"{len(df_empeoraron)/len(df_becarios)*100:.1f}%", 
-                f"{len(df_se_mantuvieron)/len(df_becarios)*100:.1f}%",
-                "100.0%"
-            ]
-        })
+        # Preparar archivo para descarga
+        output.seek(0)
         
-        df_resumen.to_excel(writer, sheet_name="Resumen", index=False)
-        ws_resumen = writer.sheets["Resumen"]
+        return dcc.send_bytes(
+            output.getvalue(), 
+            filename="evolucion_becarios_dashboard.xlsx"
+        ), html.Div([
+            html.I(className="fas fa-check-circle", style={'color': 'green', 'marginRight': '5px'}),
+            "¡Excel generado exitosamente!"
+        ])
         
-        # Formatear hoja de resumen SIN TABLA
-        header_fill_resumen = PatternFill(start_color="2E86AB", end_color="2E86AB", fill_type="solid")
-        
-        # Encabezados del resumen
-        for col in range(1, 4):
-            cell = ws_resumen.cell(row=1, column=col)
-            cell.fill = header_fill_resumen
-            cell.font = Font(bold=True, color="FFFFFF", size=12)
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.border = border_thin
-        
-        # Datos del resumen con colores especiales
-        colores_resumen = ["28A745", "DC3545", "6C757D", "FFC107"]  # Verde, Rojo, Gris, Amarillo
-        
-        for row in range(2, 6):
-            for col in range(1, 4):
-                cell = ws_resumen.cell(row=row, column=col)
-                cell.alignment = Alignment(horizontal="center", vertical="center")
-                cell.border = border_thin
-                cell.font = Font(size=11, bold=True)
-                
-                # Color de fila según categoría
-                if row <= 5:
-                    fill_color = colores_resumen[row-2] if row < 5 else "2E86AB"
-                    cell.fill = PatternFill(start_color=f"{fill_color}20", end_color=f"{fill_color}20", fill_type="solid")
-        
-        # Ajustar anchos del resumen
-        ws_resumen.column_dimensions['A'].width = 20
-        ws_resumen.column_dimensions['B'].width = 15  
-        ws_resumen.column_dimensions['C'].width = 15
-        
-        # Altura de filas del resumen
-        ws_resumen.row_dimensions[1].height = 25
-        for row in range(2, 6):
-            ws_resumen.row_dimensions[row].height = 22
-    
-    output.seek(0)
-    return dcc.send_bytes(output.getvalue(), "evolucion_becarios_profesional.xlsx")
+    except Exception as e:
+        print(f"Error en descarga: {e}")
+        return None, html.Div([
+            html.I(className="fas fa-exclamation-triangle", style={'color': 'red', 'marginRight': '5px'}),
+            f"Error al generar el archivo: {str(e)}"
+        ])
 
-server = app.server  # Render necesita esta variable
+# ================================
+#  CONFIGURACIÓN PARA RENDER
+# ================================
+server = app.server
 
+# Configuración adicional para Render
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8050))  # Render asigna el puerto
-    app.run(host="0.0.0.0", port=port, debug=False)
+    port = int(os.environ.get("PORT", 8050))
+    debug_mode = os.environ.get("DEBUG", "False").lower() == "true"
+    app.run(
+        host="0.0.0.0", 
+        port=port, 
+        debug=debug_mode
+    )

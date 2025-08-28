@@ -225,57 +225,99 @@ def grafico_riesgo():
     return fig
 
 def grafico_no_encontrado():
-    if riesgo_no_encontrado.empty:
-        # Crear un gráfico vacío si no hay datos
-        fig = go.Figure()
-        fig.add_annotation(
-            text="No hay datos de 'NO ENCONTRADO'",
-            xref="paper", yref="paper",
-            x=0.5, y=0.5, showarrow=False,
-            font=dict(size=16, color="gray")
-        )
-        fig.update_layout(
-            title="📉 Evolución de NO ENCONTRADOS (2025-1 vs 2025-2)",
-            height=400
-        )
-        return fig
+    """
+    Gráfico de barras agrupadas mostrando becarios con/sin datos de riesgo
+    """
     
+    # Obtener datos
+    no_encontrados_2025_1 = (df_becarios["RIESGO_2025_1"] == "NO ENCONTRADO").sum()
+    no_encontrados_2025_2 = (df_becarios["RIESGO_2025_2"] == "NO ENCONTRADO").sum()
+    
+    # Total de becarios por período
+    total_2025_1 = 3169  # Dato proporcionado
+    total_2025_2 = len(df_becarios)  # Conteo actual del DataFrame
+    
+    # Calcular "ENCONTRADOS" (becarios con datos de riesgo)
+    encontrados_2025_1 = total_2025_1 - no_encontrados_2025_1
+    encontrados_2025_2 = total_2025_2 - no_encontrados_2025_2
+    
+    # Crear DataFrame para barras agrupadas
+    datos_agrupados = pd.DataFrame({
+        'PERIODO': ['2025-1', '2025-2'],
+        'BECARIOS': [total_2025_1, total_2025_2],  # Mostrar el total completo
+        'NO ENCONTRADOS': [no_encontrados_2025_1, no_encontrados_2025_2],
+        'TOTAL': [total_2025_1, total_2025_2]
+    })
+    
+    # Crear gráfico de barras agrupadas
     fig = px.bar(
-        riesgo_no_encontrado,
-        x="TOTAL",
-        y="MOMENTO",
-        orientation="h",
-        text="TOTAL",
-        color="MOMENTO",
+        datos_agrupados,
+        x="PERIODO",
+        y=["BECARIOS", "NO ENCONTRADOS"],
+        barmode="group",
+        text_auto=True,
         color_discrete_map={
-            "2025-1": COLORS['secondary'],
-            "2025-2": COLORS['dark']
+            "BECARIOS": "#4A90A4",    # Azul grisáceo suave
+            "NO ENCONTRADOS": "#E85A4F"          # Rojo coral suave
         }
     )
-    fig.update_traces(textposition="outside")
+    
+    # Configurar texto en las barras
+    fig.update_traces(
+        textposition="outside",
+        textfont=dict(size=12, weight='bold')
+    )
+    
+    # Configurar layout
     fig.update_layout(
         title={
-            'text': '<b>📉 Evolución de NO ENCONTRADOS (2025-1 vs 2025-2)</b>',
+            'text': '<b>Becarios sin Datos de Riesgo</b>',
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18, 'color': COLORS['primary']}
         },
-        xaxis_title="<b>Cantidad</b>",
-        yaxis_title="",
+        xaxis_title="<b>Período Académico</b>",
+        yaxis_title="<b>Número de Becarios</b>",
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(family="Arial, sans-serif", size=12),
-        height=400,
-        margin=dict(t=60, b=50, l=50, r=50),
-        yaxis=dict(
-            showticklabels=True, 
-            categoryorder="total descending",
-            type='category'
-        ),
-        showlegend=False
+        height=450,
+        margin=dict(t=90, b=50, l=50, r=50),
+        legend=dict(
+            title="<b>Composición</b>",
+            orientation="h",
+            yanchor="bottom",
+            y=1.05,
+            xanchor="center",
+            x=0.5
+        )
     )
-    fig.update_xaxes(showgrid=True, gridcolor='rgba(128,128,128,0.1)')
-    fig.update_yaxes(showgrid=False)
+    
+    # Agregar totales y porcentajes encima de cada grupo de barras
+    for i, periodo in enumerate(['2025-1', '2025-2']):
+        total = datos_agrupados.iloc[i]['TOTAL']
+        no_encontrados = datos_agrupados.iloc[i]['NO ENCONTRADOS']
+        porcentaje = (no_encontrados / total * 100) if total > 0 else 0
+        
+        # Porcentaje sin datos (ya no necesitamos mostrar el total porque está en la barra azul)
+        fig.add_annotation(
+            x=periodo,
+            y=max(total_2025_1, total_2025_2, no_encontrados_2025_1, no_encontrados_2025_2) + 150,
+            text=f"<b>{porcentaje:.1f}%</b> sin datos",
+            showarrow=False,
+            font=dict(size=12, color=COLORS['danger']),
+            xanchor='center'
+        )
+    
+    # Configurar ejes
+    fig.update_xaxes(
+        showgrid=False,
+        tickmode='array',
+        tickvals=['2025-1', '2025-2'],
+        ticktext=['2025-1', '2025-2']
+    )
+    fig.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.1)')
+    
     return fig
 
 # ================================

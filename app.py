@@ -279,9 +279,9 @@ def grafico_no_encontrado():
     return fig
 
 # ================================
-#  GRÁFICO: EMPEORARON POR BENEFICIO (AJUSTADO)
+#  GRÁFICO: EMPEORARON POR MODALIDAD (MEJORADO)
 # ================================
-def grafico_empeoraron_por_beneficio():
+def grafico_empeoraron_por_modalidad():
     df_empeoraron = df_becarios[df_becarios["EVOLUCION"] == "EMPEORO"]
 
     if df_empeoraron.empty:
@@ -293,72 +293,190 @@ def grafico_empeoraron_por_beneficio():
             font=dict(size=16, color="gray")
         )
         fig.update_layout(
-            title="📊 Empeoraron por Tipo de Beneficio",
+            title="📊 Empeoraron por Modalidad",
             height=450
         )
         return fig
 
-    empeoraron_por_beneficio = (
-        df_empeoraron.groupby("TIPO DE BENEFICIO")
+    # Verificar si existe la columna MODALIDAD
+    if "MODALIDAD" not in df_empeoraron.columns:
+        # Si no existe, mostrar mensaje
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Columna 'MODALIDAD' no encontrada en los datos",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="orange")
+        )
+        fig.update_layout(
+            title="📊 Empeoraron por Modalidad",
+            height=450
+        )
+        return fig
+
+    # Agrupar por modalidad
+    empeoraron_por_modalidad = (
+        df_empeoraron.groupby("MODALIDAD")
         .size()
         .reset_index(name="TOTAL")
         .sort_values("TOTAL", ascending=False)
     )
 
+    # Agrupar modalidades con 3 o menos estudiantes en "OTROS"
+    modalidades_principales = empeoraron_por_modalidad[empeoraron_por_modalidad["TOTAL"] > 3].copy()
+    modalidades_menores = empeoraron_por_modalidad[empeoraron_por_modalidad["TOTAL"] <= 3]
+    
+    # Si hay modalidades menores, crear categoría "OTROS"
+    if not modalidades_menores.empty:
+        otros_total = modalidades_menores["TOTAL"].sum()
+        otros_row = pd.DataFrame({
+            "MODALIDAD": ["OTROS"],
+            "TOTAL": [otros_total]
+        })
+        empeoraron_final = pd.concat([modalidades_principales, otros_row], ignore_index=True)
+    else:
+        empeoraron_final = modalidades_principales
+
+    # Ordenar de mayor a menor
+    empeoraron_final = empeoraron_final.sort_values("TOTAL", ascending=False)
+
+    # FUNCIÓN PARA ACORTAR ETIQUETAS LARGAS CON SALTO DE LÍNEA
+    def formatear_etiqueta(texto, max_chars=15):
+        """
+        Formatea las etiquetas largas agregando saltos de línea
+        """
+        if len(texto) <= max_chars:
+            return texto
+        
+        # Dividir por espacios
+        palabras = texto.split()
+        lineas = []
+        linea_actual = ""
+        
+        for palabra in palabras:
+            # Si agregar la palabra excede el límite, crear nueva línea
+            if len(linea_actual + " " + palabra) > max_chars and linea_actual:
+                lineas.append(linea_actual.strip())
+                linea_actual = palabra
+            else:
+                if linea_actual:
+                    linea_actual += " " + palabra
+                else:
+                    linea_actual = palabra
+        
+        # Agregar la última línea
+        if linea_actual:
+            lineas.append(linea_actual.strip())
+        
+        # Unir con salto de línea
+        return "<br>".join(lineas)
+
+    # Aplicar formateo a las modalidades
+    empeoraron_final["MODALIDAD_FORMATTED"] = empeoraron_final["MODALIDAD"].apply(
+        lambda x: formatear_etiqueta(x, max_chars=15)
+    )
+
     fig = px.bar(
-        empeoraron_por_beneficio,
-        x="TIPO DE BENEFICIO",
+        empeoraron_final,
+        x="MODALIDAD_FORMATTED",
         y="TOTAL",
         text="TOTAL",
-        color="TIPO DE BENEFICIO",
-        color_discrete_sequence=[COLORS['danger'], COLORS['warning'], COLORS['info'], COLORS['secondary'], COLORS['dark']]
+        color="MODALIDAD_FORMATTED",
+        color_discrete_sequence=[
+            COLORS['danger'], COLORS['warning'], COLORS['info'], 
+            COLORS['secondary'], COLORS['dark'], COLORS['primary'], 
+            COLORS['success'], COLORS['light']
+        ]
     )
     
     fig.update_traces(
-        textposition="auto",
-        textfont=dict(size=14, weight='bold')
+        textposition="outside",
+        textfont=dict(size=14, weight='bold'),
+        # Agregar hover con información completa
+        hovertemplate="<b>%{customdata}</b><br>" +
+                      "Cantidad: %{y}<br>" +
+                      "<extra></extra>",
+        customdata=empeoraron_final["MODALIDAD"]  # Mostrar nombre completo en hover
     )
     
     fig.update_layout(
         title={
-            'text': '<b>📊 Empeoraron por Tipo de Beneficio</b>',
+            'text': '<b>📊 Empeoraron por Modalidad</b>',
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18, 'color': COLORS['primary']}
         },
-        xaxis_title="<b>Tipo de Beneficio</b>",
+        xaxis_title="<b>Modalidad</b>",
         yaxis_title="<b>Cantidad de Estudiantes</b>",
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(family="Arial, sans-serif", size=12),
-        height=450,
-        margin=dict(t=60, b=50, l=50, r=50),
-        showlegend=False
+        height=500,  # Aumentar altura para acomodar etiquetas multilínea
+        margin=dict(t=60, b=80, l=50, r=50),  # Aumentar margen inferior
+        showlegend=False,
+        # Configuración del eje X mejorada
+        xaxis=dict(
+            tickangle=0,  # Etiquetas horizontales
+            tickmode='array',
+            tickvals=list(range(len(empeoraron_final))),
+            ticktext=empeoraron_final["MODALIDAD_FORMATTED"].tolist(),
+            automargin=True,  # Ajuste automático de márgenes
+        )
     )
-    fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(showgrid=True, gridcolor='rgba(128,128,128,0.1)')
+    
+    fig.update_xaxes(
+        showgrid=False,
+        tickfont=dict(size=11)  # Tamaño de fuente para etiquetas
+    )
+    fig.update_yaxes(
+        showgrid=True, 
+        gridcolor='rgba(128,128,128,0.1)'
+    )
+    
     return fig
 
 # ================================
-#  TABLA: BENEFICIO vs NIVELES (2025-2)
+#  TABLA: MODALIDAD vs NIVELES (2025-2) - ORDENADA POR TOTAL
 # ================================
-def tabla_beneficio_niveles_2025_2():
+def tabla_modalidad_niveles_2025_2():
     df_2025_2 = df_becarios[df_becarios["RIESGO_2025_2"].isin(orden_niveles)]
 
     if df_2025_2.empty:
         return html.Div("No hay datos disponibles para mostrar", 
                        style={'textAlign': 'center', 'color': 'gray', 'padding': '20px'})
 
+    # Verificar si existe la columna MODALIDAD
+    if "MODALIDAD" not in df_2025_2.columns:
+        return html.Div("Columna 'MODALIDAD' no encontrada en los datos", 
+                       style={'textAlign': 'center', 'color': 'orange', 'padding': '20px'})
+
     tabla = (
-        df_2025_2.groupby(["TIPO DE BENEFICIO", "RIESGO_2025_2"])
+        df_2025_2.groupby(["MODALIDAD", "RIESGO_2025_2"])
         .size()
         .reset_index(name="CANTIDAD")
     )
 
-    tabla_pivot = tabla.pivot(index="TIPO DE BENEFICIO", columns="RIESGO_2025_2", values="CANTIDAD").fillna(0).reset_index()
+    tabla_pivot = tabla.pivot(index="MODALIDAD", columns="RIESGO_2025_2", values="CANTIDAD").fillna(0).reset_index()
 
-    columnas_orden = ["TIPO DE BENEFICIO"] + [col for col in ["ALTO", "MEDIO", "BAJO"] if col in tabla_pivot.columns]
+    columnas_orden = ["MODALIDAD"] + [col for col in ["ALTO", "MEDIO", "BAJO"] if col in tabla_pivot.columns]
     tabla_pivot = tabla_pivot.reindex(columns=columnas_orden, fill_value=0)
+
+    # Convertir a enteros las columnas numéricas
+    for col in tabla_pivot.columns:
+        if col != "MODALIDAD":
+            tabla_pivot[col] = tabla_pivot[col].astype(int)
+
+    # *** AGREGAR COLUMNA TOTAL Y ORDENAR ***
+    # Calcular el total por modalidad
+    columnas_numericas = [col for col in tabla_pivot.columns if col != "MODALIDAD"]
+    tabla_pivot["TOTAL"] = tabla_pivot[columnas_numericas].sum(axis=1)
+    
+    # Ordenar de mayor a menor por TOTAL
+    tabla_pivot = tabla_pivot.sort_values("TOTAL", ascending=False)
+    
+    # Reorganizar columnas para que TOTAL aparezca al final
+    columnas_finales = ["MODALIDAD"] + columnas_numericas + ["TOTAL"]
+    tabla_pivot = tabla_pivot[columnas_finales]
 
     return dash_table.DataTable(
         columns=[{"name": col, "id": col} for col in tabla_pivot.columns],
@@ -389,6 +507,12 @@ def tabla_beneficio_niveles_2025_2():
             {
                 'if': {'row_index': 'odd'},
                 'backgroundColor': '#f8f9fa'
+            },
+            # Resaltar la columna TOTAL
+            {
+                'if': {'column_id': 'TOTAL'},
+                'backgroundColor': '#e8f5e8',
+                'fontWeight': 'bold'
             }
         ]
     )
@@ -564,7 +688,7 @@ app.layout = html.Div([
         dbc.Row([
             dbc.Col([
                 html.Div([
-                    dcc.Graph(figure=grafico_empeoraron_por_beneficio())
+                    dcc.Graph(figure=grafico_empeoraron_por_modalidad())
                 ], style={
                     'backgroundColor': 'white',
                     'borderRadius': '15px',
@@ -578,7 +702,7 @@ app.layout = html.Div([
         html.Div([
             html.H5([
                 html.I(className="fas fa-table", style={'marginRight': '10px'}),
-                "Distribución de Niveles por Tipo de Beneficio (2025-2)"
+                "Distribución de Niveles por Modalidad (2025-2) - Ordenado por Total"
             ], style={
                 'color': COLORS['warning'],
                 'textAlign': 'center',
@@ -590,7 +714,7 @@ app.layout = html.Div([
         dbc.Row([
             dbc.Col([
                 html.Div([
-                    tabla_beneficio_niveles_2025_2()
+                    tabla_modalidad_niveles_2025_2()
                 ], style={
                     'backgroundColor': 'white',
                     'borderRadius': '15px',

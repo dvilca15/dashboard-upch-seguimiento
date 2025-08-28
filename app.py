@@ -477,6 +477,136 @@ def grafico_empeoraron_por_modalidad():
     
     return fig
 
+def grafico_torta_riesgo_psicologico():
+    """
+    Gráfico de torta mostrando la distribución del riesgo psicológico
+    en estudiantes que empeoraron
+    """
+    # Filtrar solo estudiantes que empeoraron
+    df_empeoraron = df_becarios[df_becarios["EVOLUCION"] == "EMPEORO"]
+    
+    if df_empeoraron.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No hay estudiantes que hayan empeorado",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(
+            title="🧠 Riesgo Psicológico - Estudiantes que Empeoraron",
+            height=450
+        )
+        return fig
+    
+    # Buscar la columna de riesgo psicológico
+    col_psicologico = None
+    for col in df_empeoraron.columns:
+        if "RIESGO PSICOLÓGICO" in col.upper() and "2025" in col and "2" in col:
+            col_psicologico = col
+            break
+    
+    if not col_psicologico:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="Columna 'RIESGO PSICOLÓGICO INICIAL 2025-2' no encontrada",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=14, color="orange")
+        )
+        fig.update_layout(
+            title="🧠 Riesgo Psicológico - Estudiantes que Empeoraron",
+            height=450
+        )
+        return fig
+    
+    # Función para limpiar riesgo psicológico
+    def limpiar_riesgo_psicologico(valor):
+        if pd.isna(valor):
+            return "SIN INFORMACIÓN"
+        v = str(valor).upper().strip()
+        if "BAJO" in v:
+            return "BAJO"
+        elif "MEDIO" in v:
+            return "MEDIO"  
+        elif "ALTO" in v:
+            return "ALTO"
+        else:
+            return "SIN INFORMACIÓN"
+    
+    # Aplicar limpieza
+    df_empeoraron_psico = df_empeoraron.copy()
+    df_empeoraron_psico["RIESGO_PSICO_LIMPIO"] = df_empeoraron_psico[col_psicologico].apply(limpiar_riesgo_psicologico)
+    
+    # Contar distribución
+    conteo_psico = df_empeoraron_psico["RIESGO_PSICO_LIMPIO"].value_counts().reset_index()
+    conteo_psico.columns = ["NIVEL", "CANTIDAD"]
+    
+    # Definir colores para cada nivel
+    colores_psico = {
+        "ALTO": "#C73E1D",           # Rojo intenso
+        "MEDIO": "#F18F01",          # Naranja
+        "BAJO": "#81B29A",           # Verde menta
+        "SIN INFORMACIÓN": "#5C4B51"  # Gris
+    }
+    
+    # Crear lista de colores en el orden correcto
+    colores_grafico = [colores_psico.get(nivel, "#5C4B51") for nivel in conteo_psico["NIVEL"]]
+    
+    # Calcular porcentajes
+    total = conteo_psico["CANTIDAD"].sum()
+    conteo_psico["PORCENTAJE"] = (conteo_psico["CANTIDAD"] / total * 100).round(1)
+    
+    # Crear gráfico de torta
+    fig = go.Figure(data=[go.Pie(
+        labels=conteo_psico["NIVEL"],
+        values=conteo_psico["CANTIDAD"],
+        hole=0.4,  # Dona
+        marker_colors=colores_grafico,
+        textinfo="label+percent+value",
+        texttemplate="<b>%{label}</b><br>%{value} estudiantes<br>(%{percent})",
+        textfont=dict(size=12),
+        hovertemplate="<b>%{label}</b><br>" +
+                      "Cantidad: %{value}<br>" +
+                      "Porcentaje: %{percent}<br>" +
+                      "<extra></extra>",
+        # Separar un poco las secciones
+        pull=[0.05 if nivel == "ALTO" else 0.02 for nivel in conteo_psico["NIVEL"]]
+    )])
+    
+    fig.update_layout(
+        title={
+            'text': '<b>🧠 Riesgo Psicológico en Estudiantes que Empeoraron</b><br>' +
+                    f'<sub>Total: {total} estudiantes</sub>',
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18, 'color': COLORS['primary']}
+        },
+        font=dict(family="Arial, sans-serif", size=12),
+        height=500,
+        margin=dict(t=100, b=50, l=50, r=50),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        # Configurar leyenda
+        legend=dict(
+            orientation="v",
+            yanchor="middle",
+            y=0.5,
+            xanchor="left",
+            x=1.05,
+            font=dict(size=11)
+        )
+    )
+    
+    # Agregar anotación en el centro de la dona
+    fig.add_annotation(
+        text=f"<b>{total}</b><br>Estudiantes<br>Empeoraron",
+        x=0.5, y=0.5,
+        font=dict(size=14, color=COLORS['primary']),
+        showarrow=False
+    )
+    
+    return fig
 # ================================
 #  TABLA: MODALIDAD vs NIVELES (2025-2) - ORDENADA POR TOTAL
 # ================================
@@ -727,6 +857,16 @@ app.layout = html.Div([
             ], lg=12)
         ], className="mb-5"),
 
+        # Análisis de estudiantes que empeoraron
+        html.Div([
+            html.H3("🔍 Análisis Detallado - Estudiantes que Empeoraron", style={
+                'color': COLORS['danger'], 
+                'fontWeight': 'bold',
+                'marginBottom': '25px',
+                'textAlign': 'center'
+            })
+        ]),
+
         dbc.Row([
             dbc.Col([
                 html.Div([
@@ -738,7 +878,18 @@ app.layout = html.Div([
                     'boxShadow': '0 8px 25px rgba(0,0,0,0.1)',
                     'margin': '10px'
                 })
-            ], lg=12)
+            ], lg=7, md=12),
+            dbc.Col([
+                html.Div([
+                    dcc.Graph(figure=grafico_torta_riesgo_psicologico())
+                ], style={
+                    'backgroundColor': 'white',
+                    'borderRadius': '15px',
+                    'padding': '20px',
+                    'boxShadow': '0 8px 25px rgba(0,0,0,0.1)',
+                    'margin': '10px'
+                })
+            ], lg=5, md=12)
         ], className="mb-5"),
 
         html.Div([

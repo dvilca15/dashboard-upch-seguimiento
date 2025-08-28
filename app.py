@@ -128,7 +128,7 @@ se_mantuvieron = df_becarios[
 #  DASHBOARD
 # ================================
 app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-app.title = "Dashboard Becarios 2025"
+app.title = "Dashboard Riesgo Academico 2025"
 
 # Paleta de colores profesional
 COLORS = {
@@ -342,7 +342,6 @@ def grafico_empeoraron_por_modalidad():
 
     # Verificar si existe la columna MODALIDAD
     if "MODALIDAD" not in df_empeoraron.columns:
-        # Si no existe, mostrar mensaje
         fig = go.Figure()
         fig.add_annotation(
             text="Columna 'MODALIDAD' no encontrada en los datos",
@@ -356,9 +355,22 @@ def grafico_empeoraron_por_modalidad():
         )
         return fig
 
+    # Crear una copia del DataFrame para modificar
+    df_temp = df_empeoraron.copy()
+    
+    # UNIFICAR MODALIDADES CNA
+    df_temp["MODALIDAD"] = df_temp["MODALIDAD"].replace({
+        "Beca CNA y PA": "CNA Y PA",
+        "CNA": "CNA Y PA"
+    })
+    
+    # También podemos unificar otras modalidades similares si existen
+    # Ejemplo: unificar variaciones de nombres similares
+    df_temp["MODALIDAD"] = df_temp["MODALIDAD"].str.strip()  # Eliminar espacios extras
+
     # Agrupar por modalidad
     empeoraron_por_modalidad = (
-        df_empeoraron.groupby("MODALIDAD")
+        df_temp.groupby("MODALIDAD")
         .size()
         .reset_index(name="TOTAL")
         .sort_values("TOTAL", ascending=False)
@@ -382,12 +394,12 @@ def grafico_empeoraron_por_modalidad():
     # Ordenar de mayor a menor
     empeoraron_final = empeoraron_final.sort_values("TOTAL", ascending=False)
 
-    # FUNCIÓN PARA ACORTAR ETIQUETAS LARGAS CON SALTO DE LÍNEA
-    def formatear_etiqueta(texto, max_chars=15):
+    # FUNCIÓN MEJORADA PARA FORMATEAR ETIQUETAS
+    def formatear_etiqueta(texto, max_chars_por_linea=12):
         """
-        Formatea las etiquetas largas agregando saltos de línea
+        Formatea las etiquetas agregando saltos de línea basado en el ancho de la columna
         """
-        if len(texto) <= max_chars:
+        if len(texto) <= max_chars_por_linea:
             return texto
         
         # Dividir por espacios
@@ -397,32 +409,70 @@ def grafico_empeoraron_por_modalidad():
         
         for palabra in palabras:
             # Si agregar la palabra excede el límite, crear nueva línea
-            if len(linea_actual + " " + palabra) > max_chars and linea_actual:
+            test_linea = (linea_actual + " " + palabra).strip() if linea_actual else palabra
+            
+            if len(test_linea) > max_chars_por_linea and linea_actual:
                 lineas.append(linea_actual.strip())
                 linea_actual = palabra
             else:
-                if linea_actual:
-                    linea_actual += " " + palabra
-                else:
-                    linea_actual = palabra
+                linea_actual = test_linea
         
         # Agregar la última línea
         if linea_actual:
             lineas.append(linea_actual.strip())
         
-        # Unir con salto de línea
-        return "<br>".join(lineas)
+        # Si una palabra individual es muy larga, dividirla
+        lineas_finales = []
+        for linea in lineas:
+            if len(linea) > max_chars_por_linea * 1.5:  # Si es muy larga
+                # Dividir la línea larga
+                while len(linea) > max_chars_por_linea:
+                    # Buscar el mejor punto de corte
+                    punto_corte = max_chars_por_linea
+                    if ' ' in linea[:punto_corte]:
+                        # Encontrar el último espacio antes del límite
+                        punto_corte = linea.rfind(' ', 0, max_chars_por_linea)
+                    
+                    lineas_finales.append(linea[:punto_corte].strip())
+                    linea = linea[punto_corte:].strip()
+                
+                if linea:  # Agregar el resto si queda algo
+                    lineas_finales.append(linea)
+            else:
+                lineas_finales.append(linea)
+        
+        # Unir con salto de línea HTML
+        return "<br>".join(lineas_finales)
 
+    # Calcular el ancho disponible por columna dinámicamente
+    num_columnas = len(empeoraron_final)
+    if num_columnas <= 5:
+        max_chars = 15
+    elif num_columnas <= 8:
+        max_chars = 12
+    else:
+        max_chars = 10
+
+    # Calcular porcentajes
+    total_empeoraron = empeoraron_final["TOTAL"].sum()
+    empeoraron_final["PORCENTAJE"] = (empeoraron_final["TOTAL"] / total_empeoraron * 100).round(1)
+    
+    # Crear etiquetas combinadas (número + porcentaje)
+    empeoraron_final["ETIQUETA_COMPLETA"] = empeoraron_final.apply(
+        lambda row: f"{row['PORCENTAJE']}%<br>{row['TOTAL']}", axis=1
+    )
+    
     # Aplicar formateo a las modalidades
     empeoraron_final["MODALIDAD_FORMATTED"] = empeoraron_final["MODALIDAD"].apply(
-        lambda x: formatear_etiqueta(x, max_chars=15)
+        lambda x: formatear_etiqueta(x, max_chars_por_linea=max_chars)
     )
 
+    # Crear el gráfico
     fig = px.bar(
         empeoraron_final,
         x="MODALIDAD_FORMATTED",
         y="TOTAL",
-        text="TOTAL",
+        text="ETIQUETA_COMPLETA",
         color="MODALIDAD_FORMATTED",
         color_discrete_sequence=[
             COLORS['danger'], COLORS['warning'], COLORS['info'], 
@@ -431,15 +481,30 @@ def grafico_empeoraron_por_modalidad():
         ]
     )
     
+    # AQUÍ ESTÁ LA CORRECCIÓN PRINCIPAL - Configurar el texto más específicamente
     fig.update_traces(
         textposition="outside",
-        textfont=dict(size=14, weight='bold'),
+        textfont=dict(size=11, weight='bold'),  # Reducir ligeramente el tamaño
+        # Configurar la posición del texto con más control
+        texttemplate='%{text}',
         # Agregar hover con información completa
         hovertemplate="<b>%{customdata}</b><br>" +
                       "Cantidad: %{y}<br>" +
+                      "Porcentaje: %{text}<br>" +
                       "<extra></extra>",
         customdata=empeoraron_final["MODALIDAD"]  # Mostrar nombre completo en hover
     )
+    
+    # Calcular altura dinámica basada en las etiquetas
+    max_lineas = max(empeoraron_final["MODALIDAD_FORMATTED"].apply(lambda x: x.count('<br>') + 1))
+    
+    # AUMENTAR LA ALTURA PARA DAR MÁS ESPACIO AL TEXTO
+    valor_maximo = empeoraron_final["TOTAL"].max()
+    altura_base = 600  # Aumentar altura base significativamente
+    altura_extra = max(0, (max_lineas - 1) * 25)  # Más espacio por línea adicional
+    # Agregar espacio extra basado en el valor máximo para el texto superior
+    altura_texto_superior = max(80, valor_maximo * 0.3)  # Espacio proporcional al valor máximo
+    altura_total = altura_base + altura_extra + altura_texto_superior
     
     fig.update_layout(
         title={
@@ -453,23 +518,32 @@ def grafico_empeoraron_por_modalidad():
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(family="Arial, sans-serif", size=12),
-        height=500,  # Aumentar altura para acomodar etiquetas multilínea
-        margin=dict(t=60, b=80, l=50, r=50),  # Aumentar margen inferior
+        height=altura_total,
+        # AJUSTAR MÁRGENES PARA DAR MÁS ESPACIO AL TEXTO SUPERIOR
+        margin=dict(t=100, b=120 + altura_extra, l=50, r=50),  # Más margen superior
         showlegend=False,
-        # Configuración del eje X mejorada
+        # Configuración del eje X optimizada
         xaxis=dict(
             tickangle=0,  # Etiquetas horizontales
             tickmode='array',
             tickvals=list(range(len(empeoraron_final))),
             ticktext=empeoraron_final["MODALIDAD_FORMATTED"].tolist(),
-            automargin=True,  # Ajuste automático de márgenes
+            automargin=True,
+            tickfont=dict(size=10)  # Tamaño de fuente ajustado
+        ),
+        # AJUSTAR EL EJE Y PARA DAR MÁS ESPACIO ARRIBA
+        yaxis=dict(
+            range=[0, valor_maximo * 1.25]  # Aumentar el rango superior
         )
     )
     
     fig.update_xaxes(
         showgrid=False,
-        tickfont=dict(size=11)  # Tamaño de fuente para etiquetas
+        # Ajustar espaciado entre etiquetas
+        categoryorder='array',
+        categoryarray=empeoraron_final["MODALIDAD_FORMATTED"].tolist()
     )
+    
     fig.update_yaxes(
         showgrid=True, 
         gridcolor='rgba(128,128,128,0.1)'
@@ -495,7 +569,7 @@ def grafico_torta_riesgo_psicologico():
         )
         fig.update_layout(
             title="🧠 Riesgo Psicológico - Estudiantes que Empeoraron",
-            height=450
+            height=770
         )
         return fig
     
@@ -516,7 +590,7 @@ def grafico_torta_riesgo_psicologico():
         )
         fig.update_layout(
             title="🧠 Riesgo Psicológico - Estudiantes que Empeoraron",
-            height=450
+            height=770
         )
         return fig
     
@@ -583,7 +657,7 @@ def grafico_torta_riesgo_psicologico():
             'font': {'size': 18, 'color': COLORS['primary']}
         },
         font=dict(family="Arial, sans-serif", size=12),
-        height=500,
+        height=770,
         margin=dict(t=100, b=50, l=50, r=50),
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
@@ -622,37 +696,111 @@ def tabla_modalidad_niveles_2025_2():
         return html.Div("Columna 'MODALIDAD' no encontrada en los datos", 
                        style={'textAlign': 'center', 'color': 'orange', 'padding': '20px'})
 
-    tabla = (
+    # TABLA ORIGINAL: Modalidad vs Niveles de Riesgo (2025-2)
+    tabla_niveles = (
         df_2025_2.groupby(["MODALIDAD", "RIESGO_2025_2"])
         .size()
         .reset_index(name="CANTIDAD")
     )
+    
+    tabla_pivot_niveles = tabla_niveles.pivot(
+        index="MODALIDAD", 
+        columns="RIESGO_2025_2", 
+        values="CANTIDAD"
+    ).fillna(0).reset_index()
 
-    tabla_pivot = tabla.pivot(index="MODALIDAD", columns="RIESGO_2025_2", values="CANTIDAD").fillna(0).reset_index()
+    # Asegurar que todas las columnas de niveles existan
+    for nivel in ["ALTO", "MEDIO", "BAJO"]:
+        if nivel not in tabla_pivot_niveles.columns:
+            tabla_pivot_niveles[nivel] = 0
+    
+    # Reordenar columnas de niveles
+    columnas_niveles = ["MODALIDAD"] + [col for col in ["ALTO", "MEDIO", "BAJO"] if col in tabla_pivot_niveles.columns]
+    tabla_pivot_niveles = tabla_pivot_niveles.reindex(columns=columnas_niveles, fill_value=0)
 
-    columnas_orden = ["MODALIDAD"] + [col for col in ["ALTO", "MEDIO", "BAJO"] if col in tabla_pivot.columns]
-    tabla_pivot = tabla_pivot.reindex(columns=columnas_orden, fill_value=0)
+    # NUEVA FUNCIONALIDAD: Agregar columnas de evolución por modalidad
+    # Filtrar solo estudiantes que tienen datos válidos en ambos períodos (ALTO, MEDIO, BAJO)
+    df_evolucion_valida = df_becarios[
+        (df_becarios["RIESGO_2025_1"].isin(["ALTO", "MEDIO", "BAJO"])) & 
+        (df_becarios["RIESGO_2025_2"].isin(["ALTO", "MEDIO", "BAJO"])) &
+        (df_becarios["EVOLUCION"].isin(["MEJORO", "EMPEORO", "SE MANTUVO"])) &
+        (df_becarios["MODALIDAD"].notna())
+    ]
+    
+    tabla_evolucion = (
+        df_evolucion_valida.groupby(["MODALIDAD", "EVOLUCION"])
+        .size()
+        .reset_index(name="CANTIDAD")
+    )
+    
+    tabla_pivot_evolucion = tabla_evolucion.pivot(
+        index="MODALIDAD", 
+        columns="EVOLUCION", 
+        values="CANTIDAD"
+    ).fillna(0).reset_index()
+    
+    # Asegurar que existan todas las columnas de evolución
+    for evolucion in ["MEJORO", "EMPEORO", "SE MANTUVO"]:
+        if evolucion not in tabla_pivot_evolucion.columns:
+            tabla_pivot_evolucion[evolucion] = 0
+    
+    # Seleccionar solo las columnas de interés para evolución
+    columnas_evolucion = ["MODALIDAD", "MEJORO", "EMPEORO", "SE MANTUVO"]
+    tabla_pivot_evolucion = tabla_pivot_evolucion[
+        [col for col in columnas_evolucion if col in tabla_pivot_evolucion.columns]
+    ]
 
+    # COMBINAR AMBAS TABLAS
+    tabla_final = pd.merge(tabla_pivot_niveles, tabla_pivot_evolucion, on="MODALIDAD", how="outer").fillna(0)
+    
     # Convertir a enteros las columnas numéricas
-    for col in tabla_pivot.columns:
+    for col in tabla_final.columns:
         if col != "MODALIDAD":
-            tabla_pivot[col] = tabla_pivot[col].astype(int)
+            tabla_final[col] = tabla_final[col].astype(int)
 
-    # *** AGREGAR COLUMNA TOTAL Y ORDENAR ***
-    # Calcular el total por modalidad
-    columnas_numericas = [col for col in tabla_pivot.columns if col != "MODALIDAD"]
-    tabla_pivot["TOTAL"] = tabla_pivot[columnas_numericas].sum(axis=1)
+    # Calcular TOTAL (solo de los niveles de riesgo)
+    columnas_numericas_niveles = [col for col in ["ALTO", "MEDIO", "BAJO"] if col in tabla_final.columns]
+    tabla_final["TOTAL_RIESGO"] = tabla_final[columnas_numericas_niveles].sum(axis=1)
     
-    # Ordenar de mayor a menor por TOTAL
-    tabla_pivot = tabla_pivot.sort_values("TOTAL", ascending=False)
+    # Ordenar por TOTAL_RIESGO de mayor a menor
+    tabla_final = tabla_final.sort_values("TOTAL_RIESGO", ascending=False)
     
-    # Reorganizar columnas para que TOTAL aparezca al final
-    columnas_finales = ["MODALIDAD"] + columnas_numericas + ["TOTAL"]
-    tabla_pivot = tabla_pivot[columnas_finales]
+    # Reorganizar columnas: MODALIDAD + NIVELES + TOTAL_RIESGO + EVOLUCIONES
+    columnas_finales = ["MODALIDAD"]
+    
+    # Agregar columnas de niveles
+    columnas_finales.extend([col for col in ["ALTO", "MEDIO", "BAJO"] if col in tabla_final.columns])
+    
+    # Agregar total de riesgo
+    columnas_finales.append("TOTAL_RIESGO")
+    
+    # Agregar columnas de evolución
+    columnas_finales.extend([col for col in ["MEJORO", "EMPEORO", "SE MANTUVO"] if col in tabla_final.columns])
+    
+    # Aplicar el orden final
+    tabla_final = tabla_final[columnas_finales]
+
+    # Crear nombres más descriptivos para las columnas
+    nombres_columnas = []
+    for col in tabla_final.columns:
+        if col == "MODALIDAD":
+            nombres_columnas.append({"name": "MODALIDAD", "id": col})
+        elif col in ["ALTO", "MEDIO", "BAJO"]:
+            nombres_columnas.append({"name": f"RIESGO {col}", "id": col})
+        elif col == "TOTAL_RIESGO":
+            nombres_columnas.append({"name": "TOTAL", "id": col})
+        elif col == "MEJORO":
+            nombres_columnas.append({"name": "MEJORARON", "id": col})
+        elif col == "EMPEORO":
+            nombres_columnas.append({"name": "EMPEORARON", "id": col})
+        elif col == "SE MANTUVO":
+            nombres_columnas.append({"name": "SE MANTUVIERON", "id": col})
+        else:
+            nombres_columnas.append({"name": col, "id": col})
 
     return dash_table.DataTable(
-        columns=[{"name": col, "id": col} for col in tabla_pivot.columns],
-        data=tabla_pivot.to_dict("records"),
+        columns=nombres_columnas,
+        data=tabla_final.to_dict("records"),
         style_table={
             "overflowX": "auto",
             "borderRadius": "15px",
@@ -665,26 +813,62 @@ def tabla_modalidad_niveles_2025_2():
             "fontWeight": "bold",
             "textAlign": "center",
             "border": "none",
-            "fontSize": "14px"
+            "fontSize": "13px",
+            "whiteSpace": "normal",
+            "height": "auto",
+            "lineHeight": "1.2"
         },
         style_cell={
             "textAlign": "center",
             "backgroundColor": "#ffffff",
             "color": "#333",
-            "padding": "12px",
+            "padding": "10px 8px",
             "border": "1px solid #e0e0e0",
-            "fontSize": "13px"
+            "fontSize": "12px",
+            "whiteSpace": "normal",
+            "height": "auto"
         },
         style_data_conditional=[
             {
                 'if': {'row_index': 'odd'},
                 'backgroundColor': '#f8f9fa'
             },
-            # Resaltar la columna TOTAL
+            # Resaltar columna TOTAL
             {
-                'if': {'column_id': 'TOTAL'},
+                'if': {'column_id': 'TOTAL_RIESGO'},
                 'backgroundColor': '#e8f5e8',
                 'fontWeight': 'bold'
+            },
+            # Resaltar columnas de evolución con colores diferentes
+            {
+                'if': {'column_id': 'MEJORO'},
+                'backgroundColor': '#e8f8e8',
+                'color': '#2d5a2d'
+            },
+            {
+                'if': {'column_id': 'EMPEORO'},
+                'backgroundColor': '#fee8e8',
+                'color': '#8b2635'
+            },
+            {
+                'if': {'column_id': 'SE MANTUVO'},
+                'backgroundColor': '#f0f8ff',
+                'color': '#1e4d72'
+            },
+            # Resaltar modalidad
+            {
+                'if': {'column_id': 'MODALIDAD'},
+                'textAlign': 'left',
+                'fontWeight': 'bold',
+                'backgroundColor': '#f9f9f9'
+            }
+        ],
+        # Permitir ajuste automático del ancho de columnas
+        style_cell_conditional=[
+            {
+                'if': {'column_id': 'MODALIDAD'},
+                'width': '25%',
+                'minWidth': '200px'
             }
         ]
     )

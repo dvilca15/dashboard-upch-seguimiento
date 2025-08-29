@@ -1185,7 +1185,7 @@ def descargar_excel(n_clicks):
         return None, ""
     
     try:
-        # Crear DataFrames para cada categoría
+        # HOJAS EXISTENTES - Crear DataFrames para cada categoría de evolución
         df_mejoraron = df_becarios[df_becarios["EVOLUCION"] == "MEJORO"].copy()
         df_empeoraron = df_becarios[df_becarios["EVOLUCION"] == "EMPEORO"].copy()
         df_se_mantuvieron = df_becarios[
@@ -1194,12 +1194,33 @@ def descargar_excel(n_clicks):
             (df_becarios["RIESGO_2025_2"] != "NO ENCONTRADO")
         ].copy()
         
+        # NUEVAS HOJAS - Crear DataFrames por disponibilidad de datos de riesgo
+        
+        # 1. Estudiantes con riesgo SOLO en 2025-1 (tienen datos en 2025-1, NO en 2025-2)
+        df_solo_2025_1 = df_becarios[
+            (df_becarios["RIESGO_2025_1"].isin(["ALTO", "MEDIO", "BAJO"])) &
+            (df_becarios["RIESGO_2025_2"] == "NO ENCONTRADO")
+        ].copy()
+        
+        # 2. Estudiantes con riesgo SOLO en 2025-2 (tienen datos en 2025-2, NO en 2025-1)  
+        df_solo_2025_2 = df_becarios[
+            (df_becarios["RIESGO_2025_1"] == "NO ENCONTRADO") &
+            (df_becarios["RIESGO_2025_2"].isin(["ALTO", "MEDIO", "BAJO"]))
+        ].copy()
+        
+        # 3. Estudiantes SIN información de riesgo en NINGÚN período
+        df_sin_informacion = df_becarios[
+            (df_becarios["RIESGO_2025_1"] == "NO ENCONTRADO") &
+            (df_becarios["RIESGO_2025_2"] == "NO ENCONTRADO")
+        ].copy()
+        
         # Crear buffer en memoria
         output = io.BytesIO()
         
-        # Usar openpyxl (más universal, viene con pandas por defecto)
+        # Usar openpyxl para crear el archivo Excel
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # Escribir hojas principales
+            
+            # HOJAS PRINCIPALES (por evolución)
             if not df_mejoraron.empty:
                 df_mejoraron.to_excel(writer, sheet_name="Mejoraron", index=False)
             
@@ -1209,35 +1230,71 @@ def descargar_excel(n_clicks):
             if not df_se_mantuvieron.empty:
                 df_se_mantuvieron.to_excel(writer, sheet_name="Se Mantuvieron", index=False)
             
-            # Crear hoja de resumen
+            # NUEVAS HOJAS (por disponibilidad de datos)
+            if not df_solo_2025_1.empty:
+                df_solo_2025_1.to_excel(writer, sheet_name="Solo Riesgo 2025-1", index=False)
+            
+            if not df_solo_2025_2.empty:
+                df_solo_2025_2.to_excel(writer, sheet_name="Solo Riesgo 2025-2", index=False)
+            
+            if not df_sin_informacion.empty:
+                df_sin_informacion.to_excel(writer, sheet_name="Sin Informacion", index=False)
+            
+            # HOJA DE RESUMEN AMPLIADA
             df_resumen = pd.DataFrame({
-                'CATEGORIA': ['MEJORARON', 'EMPEORARON', 'SE MANTUVIERON', 'TOTAL'],
+                'CATEGORIA': [
+                    'MEJORARON', 
+                    'EMPEORARON', 
+                    'SE MANTUVIERON',
+                    'SOLO TIENEN RIESGO 2025-1',
+                    'SOLO TIENEN RIESGO 2025-2', 
+                    'SIN INFORMACIÓN AMBOS PERÍODOS',
+                    'TOTAL BECARIOS'
+                ],
                 'CANTIDAD': [
                     len(df_mejoraron), 
                     len(df_empeoraron), 
-                    len(df_se_mantuvieron), 
+                    len(df_se_mantuvieron),
+                    len(df_solo_2025_1),
+                    len(df_solo_2025_2),
+                    len(df_sin_informacion),
                     len(df_becarios)
                 ],
                 'PORCENTAJE': [
                     f"{len(df_mejoraron)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%",
                     f"{len(df_empeoraron)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%", 
                     f"{len(df_se_mantuvieron)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%",
+                    f"{len(df_solo_2025_1)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%",
+                    f"{len(df_solo_2025_2)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%",
+                    f"{len(df_sin_informacion)/len(df_becarios)*100:.1f}%" if len(df_becarios) > 0 else "0.0%",
                     "100.0%"
+                ],
+                'DESCRIPCION': [
+                    'Estudiantes que redujeron su nivel de riesgo',
+                    'Estudiantes que aumentaron su nivel de riesgo',
+                    'Estudiantes que mantuvieron el mismo nivel',
+                    'Solo aparecen en registro 2025-1',
+                    'Solo aparecen en registro 2025-2', 
+                    'No tienen datos de riesgo en ningún período',
+                    'Total de becarios en la base de datos'
                 ]
             })
             
-            df_resumen.to_excel(writer, sheet_name="Resumen", index=False)
+            df_resumen.to_excel(writer, sheet_name="Resumen General", index=False)
             
-            # Formateo básico con openpyxl
+            # Formateo con openpyxl (si está disponible)
             try:
-                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                from openpyxl.styles import Font, PatternFill, Alignment
                 
-                # Colores para cada hoja
+                # Colores para cada tipo de hoja
                 colores_hojas = {
-                    "Mejoraron": "28A745",
-                    "Empeoraron": "DC3545", 
-                    "Se Mantuvieron": "6C757D",
-                    "Resumen": "2E86AB"
+                    "Mejoraron": "28A745",           # Verde
+                    "Empeoraron": "DC3545",          # Rojo
+                    "Se Mantuvieron": "6C757D",      # Gris
+                    "Solo Riesgo 2025-1": "FFC107", # Amarillo
+                    "Solo Riesgo 2025-2": "17A2B8", # Azul claro
+                    "Sin Informacion": "6F42C1",     # Púrpura
+                    "Resumen General": "2E86AB"      # Azul principal
                 }
                 
                 # Aplicar formato a cada hoja
@@ -1250,13 +1307,13 @@ def descargar_excel(n_clicks):
                     header_font = Font(bold=True, color="FFFFFF", size=12)
                     header_alignment = Alignment(horizontal="center", vertical="center")
                     
-                    # Aplicar formato a la primera fila (encabezados)
+                    # Aplicar formato a la primera fila
                     for cell in worksheet[1]:
                         cell.fill = header_fill
                         cell.font = header_font
                         cell.alignment = header_alignment
                     
-                    # Ajustar anchos de columnas automáticamente
+                    # Ajustar anchos de columnas
                     for column in worksheet.columns:
                         max_length = 0
                         column_letter = column[0].column_letter
@@ -1272,7 +1329,7 @@ def descargar_excel(n_clicks):
                         worksheet.column_dimensions[column_letter].width = max(adjusted_width, 12)
                         
             except ImportError:
-                # Si no se puede importar openpyxl.styles, continuar sin formato
+                # Continuar sin formato si openpyxl.styles no está disponible
                 pass
         
         # Preparar archivo para descarga
@@ -1280,10 +1337,10 @@ def descargar_excel(n_clicks):
         
         return dcc.send_bytes(
             output.getvalue(), 
-            filename="evolucion_becarios_dashboard.xlsx"
+            filename="analisis_completo_becarios_2025.xlsx"
         ), html.Div([
             html.I(className="fas fa-check-circle", style={'color': 'green', 'marginRight': '5px'}),
-            "¡Excel generado exitosamente!"
+            f"¡Excel generado con {len(writer.sheets)} hojas!"
         ])
         
     except Exception as e:

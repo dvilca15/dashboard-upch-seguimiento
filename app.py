@@ -271,7 +271,7 @@ def grafico_no_encontrado():
     # Configurar layout
     fig.update_layout(
         title={
-            'text': '<b>Becarios sin Datos de Riesgo</b>',
+            'text': '<b>Becarios sin Datos de Riesgo Académico</b>',
             'x': 0.5,
             'xanchor': 'center',
             'font': {'size': 18, 'color': COLORS['primary']}
@@ -303,7 +303,7 @@ def grafico_no_encontrado():
         fig.add_annotation(
             x=periodo,
             y=max(total_2025_1, total_2025_2, no_encontrados_2025_1, no_encontrados_2025_2) + 150,
-            text=f"<b>{porcentaje:.1f}%</b> sin datos",
+            text=f"<b>{porcentaje:.1f}%</b> sin datos de riesgo académico",
             showarrow=False,
             font=dict(size=12, color=COLORS['danger']),
             xanchor='center'
@@ -597,7 +597,7 @@ def grafico_torta_riesgo_psicologico():
     # Función para limpiar riesgo psicológico
     def limpiar_riesgo_psicologico(valor):
         if pd.isna(valor):
-            return "SIN INFORMACIÓN"
+            return "NO LLENARON ENCUESTA"
         v = str(valor).upper().strip()
         if "BAJO" in v:
             return "BAJO"
@@ -606,7 +606,7 @@ def grafico_torta_riesgo_psicologico():
         elif "ALTO" in v:
             return "ALTO"
         else:
-            return "SIN INFORMACIÓN"
+            return "NO LLENARON ENCUESTA"
     
     # Aplicar limpieza
     df_empeoraron_psico = df_empeoraron.copy()
@@ -621,7 +621,7 @@ def grafico_torta_riesgo_psicologico():
         "ALTO": "#C73E1D",           # Rojo intenso
         "MEDIO": "#F18F01",          # Naranja
         "BAJO": "#81B29A",           # Verde menta
-        "SIN INFORMACIÓN": "#5C4B51"  # Gris
+        "NO LLENARON ENCUESTA": "#5C4B51"  # Gris
     }
     
     # Crear lista de colores en el orden correcto

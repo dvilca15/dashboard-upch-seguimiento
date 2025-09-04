@@ -1079,7 +1079,7 @@ app.layout = html.Div([
         html.Div([
             html.H5([
                 html.I(className="fas fa-table", style={'marginRight': '10px'}),
-                "Distribución de Niveles por Modalidad (2025-2) - Ordenado por Total"
+                "Distribución de Niveles por Modalidad (2025-2)"
             ], style={
                 'color': COLORS['warning'],
                 'textAlign': 'center',
